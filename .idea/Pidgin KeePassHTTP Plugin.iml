@@ -6,38 +6,39 @@
       <sourceFolder url="file://$MODULE_DIR$/plugin/CMakeLists.txt" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/config.h.cmake" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/CMakeLists.txt" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cmake/FindGDK2.cmake" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cmake/FindGTK2.cmake" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cmake/FindLibPurple.cmake" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cmake/FindGLIB2.cmake" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cmake/FindLibPurple.cmake" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cmake/FindGTK2.cmake" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cmake/FindLibSoup.cmake" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cmake/FindGDK2.cmake" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cmake/FindJSON-C.cmake" isTestSource="false" />
     </content>
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module-library">
       <library name="Header Search Paths">
         <CLASSES>
           <root url="file:///usr/include" />
+          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include" />
+          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include-fixed" />
           <root url="file:///usr/lib/gtk-2.0/include" />
           <root url="file:///usr/lib/glib-2.0/include" />
-          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include-fixed" />
-          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include" />
           <root url="file:///usr/local/include" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/MinSizeRel0" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/Debug0" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/Release0" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/RelWithDebInfo0" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/Release" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/Debug" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/RelWithDebInfo" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/MinSizeRel" />
         </CLASSES>
         <SOURCES>
           <root url="file:///usr/include" />
+          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include" />
+          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include-fixed" />
           <root url="file:///usr/lib/gtk-2.0/include" />
           <root url="file:///usr/lib/glib-2.0/include" />
-          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include-fixed" />
-          <root url="file:///usr/lib/gcc/x86_64-pc-linux-gnu/6.1.1/include" />
           <root url="file:///usr/local/include" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/MinSizeRel0" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/Debug0" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/Release0" />
-          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin KeePassHTTP Plugin-b5aaab75/b5aaab75/RelWithDebInfo0" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/Release" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/Debug" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/RelWithDebInfo" />
+          <root url="file://$USER_HOME$/.CLion2016.1/system/cmake/generated/Pidgin_KeePassHTTP_Plugin-f5a7d52d/f5a7d52d/MinSizeRel" />
         </SOURCES>
       </library>
     </orderEntry>
