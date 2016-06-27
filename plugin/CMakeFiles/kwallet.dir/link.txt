@@ -1,0 +1,1 @@
+/usr/bin/cc  -fPIC      -shared  -o libkwallet.so CMakeFiles/kwallet.dir/kwallet.c.o 

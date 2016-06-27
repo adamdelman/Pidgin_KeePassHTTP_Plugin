@@ -1,0 +1,52 @@
+project(PidginKeePassHTTP)
+cmake_minimum_required(VERSION 2.6)
+
+set(CMAKE_BUILD_TYPE Debug)
+
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/README")
+set(CPACK_GENERATOR "DEB;RPM;TGZ")
+set(CPACK_SOURCE_GENERATOR "TBZ2")
+set(CPACK_PACKAGE_VERSION_MAJOR "1")
+set(CPACK_PACKAGE_VERSION_MINOR "0")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
+set(CPACK_PACKAGE_CONTACT "Adam Delman <flyn@flyn.cc>")
+set(PIDGINKEEPASSHTTP_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}")
+set(PIDGINKEEPASSHTTP_VERSION_FULL "${PIDGINKEEPASSHTTP_VERSION}.${CPACK_PACKAGE_VERSION_PATCH}")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${PIDGINKEEPASSHTTP_VERSION_FULL}")
+set(CPACK_PACKAGE_FILE_NAME "${CMAKE_PROJECT_NAME}-${PIDGINKEEPASSHTTP_VERSION_FULL}")
+
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/")
+
+include(CPack)
+include(FindPkgConfig)
+
+find_package(PkgConfig REQUIRED)
+
+find_package(GLIB2 REQUIRED)
+include_directories(${GLIB_INCLUDE_DIRS})
+
+find_package(LibSoup REQUIRED)
+include_directories(${LIBSOUP_INCLUDE_DIRS})
+
+find_package(GTK2 REQUIRED)
+include_directories(${GTK2_INCLUDE_DIRS})
+
+find_package(GDK2 REQUIRED)
+include_directories(${GDK2_INCLUDE_DIRS})
+
+find_package(JsonGlib REQUIRED)
+include_directories(${JsonGlib_INCLUDE_DIRS})
+
+find_package(LibPurple REQUIRED)
+include_directories(${LIBPURPLE_INCLUDE_DIRS})
+
+#pkg_check_modules(GLIB2 REQUIRED  glib-2.0)
+#pkg_check_modules(GTK2 REQUIRED  gtk-2.0)
+pkg_check_modules(LibPurple REQUIRED  purple)
+
+configure_file(config.h.cmake ${CMAKE_BINARY_DIR}/config.h)
+
+add_subdirectory(plugin)
+

@@ -1,0 +1,15 @@
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/edit_cache.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/package_source.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/rebuild_cache.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/install/local.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/package.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/install.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/list_install_components.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/edit_cache.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/package_source.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/rebuild_cache.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/package.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/keepasshttp.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/install/local.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/install.dir
+/home/adam/workspace/Pidgin KeePassHTTP Plugin/plugin/CMakeFiles/list_install_components.dir

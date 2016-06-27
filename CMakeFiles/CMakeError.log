@@ -1,0 +1,29 @@
+The C compiler identification could not be found in "/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/3.5.1/CompilerIdC/a.out"
+
+Compilation of the C compiler identification source "CMakeCCompilerId.c" did not produce an executable in "/home/adam/workspace/Pidgin KeePassHTTP Plugin/CMakeFiles/3.5.1/CompilerIdC".
+
+Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+Compiler: /usr/bin/c++ 
+Build flags: 
+Id flags: 
+
+The output was:
+1
+/usr/bin/ld: cannot open output file a.out: No such file or directory
+collect2: error: ld returned 1 exit status
+
+
+Detecting C compiler ABI info failed to compile with the following output:
+
+
+
+Determining if the C compiler works failed with the following output:
+
+
+Detecting C [-std=c99] compiler features failed to compile with the following output:
+
+
+
+Determining if the CXX compiler works failed with the following output:
+
+

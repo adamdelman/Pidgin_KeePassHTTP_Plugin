@@ -1,0 +1,1 @@
+/usr/bin/cc  -fPIC     -g  -shared  -o CMakeFiles/CMakeRelink.dir/libkeepasshttp.so CMakeFiles/keepasshttp.dir/keepasshttp.c.o -lsoup-2.4 
