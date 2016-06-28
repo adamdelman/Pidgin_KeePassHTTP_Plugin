@@ -20,6 +20,7 @@
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <libsoup/soup-message-body.h>
 
 #define PLUGIN_ID "keepasshttp"
 #define PREF_PREFIX     "/plugins/gtk/" PLUGIN_ID
@@ -60,7 +61,6 @@ struct Http_Response {
 
 static const char *key_for_account(PurpleAccount *account) {
     static char key[PIDGIN_KEY_STRING_MAX_SIZE];
-
     snprintf(key, PIDGIN_KEY_STRING_MAX_SIZE, "%s:%s", purple_account_get_protocol_id(account),
              purple_account_get_username(account));
     return key;
@@ -92,21 +92,28 @@ bool is_association_successful(struct Http_Response *http_response) {
     return test_success;
 }
 
-gchar *get_nonce() {
-    unsigned char *nonce_bytes = NULL;
-    RAND_bytes(nonce_bytes, 16);
-    gchar *nonce = g_base64_encode(nonce_bytes, sizeof(nonce_bytes));
+#define NONCE_SIZE 16
+
+unsigned char *get_nonce() {
+    unsigned char *nonce_bytes = malloc(NONCE_SIZE);
+    RAND_bytes(nonce_bytes, NONCE_SIZE);
+    unsigned char *nonce = (unsigned char *) g_base64_encode(nonce_bytes, sizeof(nonce_bytes));
     return nonce;
 }
 
 #define MAX_URL_LENGTH 300
 
 static char *get_keepass_url() {
-    const char *keepass_host = purple_prefs_get_string(PREF_KEEPASS_HOST_PATH);
+    const char *keepass_host = purple_prefs_get_path(PREF_KEEPASS_HOST_PATH);
     const int keepass_port = purple_prefs_get_int(PREF_KEEPASS_PORT_PATH);
     static char url_string[MAX_URL_LENGTH];
     snprintf(url_string, MAX_URL_LENGTH, "http://%s:%d", keepass_host, keepass_port);
     return url_string;
+}
+
+static void log_http_header(const char *name, const char *value, gpointer http_request_or_response) {
+    purple_debug_info(PLUGIN_ID, "HTTP %s header: %s: %s \n", (char *) http_request_or_response, name, value);
+
 }
 
 static struct Http_Response perform_keepass_http(const char *method, const char *body) {
@@ -114,9 +121,14 @@ static struct Http_Response perform_keepass_http(const char *method, const char 
     soup_message_set_request(msg, JSON_MIME_TYPE, SOUP_MEMORY_COPY, body, strlen(body));
     guint status_code = soup_session_send_message(session, msg);
 
-    if (status_code == 200) {
-        purple_debug_info(PLUGIN_ID, "HTTP response code: %d, \n", status_code);
-        purple_debug_info(PLUGIN_ID, "HTTP response code: %s, \n", msg->response_body->data);
+    soup_message_headers_foreach(msg->request_headers, log_http_header, "request");
+    if (body != NULL) {
+        purple_debug_info(PLUGIN_ID, "HTTP request body: %s, \n", body);
+    }
+    purple_debug_info(PLUGIN_ID, "HTTP response code: %d, \n", status_code);
+    soup_message_headers_foreach(msg->response_headers, log_http_header, "response");
+    if (msg->response_body->data != NULL) {
+        purple_debug_info(PLUGIN_ID, "HTTP response body: %s, \n", msg->response_body->data);
     }
     struct Http_Response http_response;
     http_response.status_code = status_code;
@@ -147,17 +159,86 @@ static bool keepass_http_test_associate(const char *nonce, const char *verifier,
 
 }
 
+void handleErrors(void) {
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+static int encrypt(const unsigned char *plaintext, const int plaintext_len, const unsigned char *key,
+                   const unsigned char *iv,
+                   unsigned char *ciphertext) {
+    EVP_CIPHER_CTX *ctx;
+
+    int len;
+
+    int ciphertext_len;
+
+    /* Create and initialise the context */
+    if (!(ctx = EVP_CIPHER_CTX_new())) { handleErrors(); }
+
+    /* Initialise the encryption operation. IMPORTANT - ensure you use a key
+     * and IV size appropriate for your cipher
+     * In this example we are using 256 bit AES (i.e. a 256 bit key). The
+     * IV size for *most* modes is the same as the block size. For AES this
+     * is 128 bits */
+    if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
+        handleErrors();
+    }
+
+    /* Provide the message to be encrypted, and obtain the encrypted output.
+     * EVP_EncryptUpdate can be called multiple times if necessary
+     */
+    if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)) {
+        handleErrors();
+    }
+    ciphertext_len = len;
+
+    /* Finalise the encryption. Further ciphertext bytes may be written at
+     * this stage.
+     */
+    if (1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) handleErrors();
+    ciphertext_len += len;
+
+    /* Clean up */
+    EVP_CIPHER_CTX_free(ctx);
+
+    return ciphertext_len;
+}
+
+void pad(char *str_to_pad, int pad_count, char *pad_char) {
+    printf("|%-16s|", "Hello");
+
+//    char *p = str_to_pad + pad_count - strlen(str_to_pad);
+//    strcpy(p, str_to_pad);
+//    p--;
+//    while (p >= str_to_pad) {
+//        p[0] = (char) pad_char;
+//        p--;
+//    }
+}
+
+
+unsigned char* get_verifier(const unsigned char *nonce) {
+    char *nonce_copy = malloc(NONCE_SIZE);
+    nonce_copy = strcpy(nonce_copy,nonce);
+    pad(nonce_copy,NONCE_SIZE,"0");
+    unsigned char *verifier = malloc(NONCE_SIZE);
+    encrypt(nonce_copy, (int) strlen((const char *) nonce_copy), aes_key, nonce, verifier);
+    verifier = (unsigned char *) g_base64_encode(verifier, sizeof(verifier));
+    return verifier;
+}
+
 static void keepass_http_associate() {
     struct json_object *associate_msg = json_object_new_object();
     json_object_object_add(associate_msg, REQUEST_TYPE, json_object_new_string(ASSOCIATE_REQUEST_TYPE));
-
-    json_object_object_add(associate_msg, KEY, json_object_new_string(g_base64_encode(aes_key, sizeof(aes_key))));
-    gchar *nonce = get_nonce();
-    json_object_object_add(associate_msg, NONCE, json_object_new_string(nonce));
-//    json_object_object_add(associate_msg, VERIFIER, json_object_new_string(verifier));
-
+    json_object_object_add(associate_msg, KEY, json_object_new_string((char *) aes_key));
+    const unsigned char *nonce = get_nonce();
+    json_object_object_add(associate_msg, NONCE, json_object_new_string((const char *) nonce));
+    unsigned char *verifier = get_verifier(nonce);
+    json_object_object_add(associate_msg, VERIFIER, json_object_new_string((const char *) verifier));
     const char *body = json_object_to_json_string(associate_msg);
     struct Http_Response http_response = perform_keepass_http(POST_METHOD, body);
+//    free(verifier);
     bool test_success = is_association_successful(&http_response);
     if (test_success) {
         purple_debug_info(PLUGIN_ID, "KeePass association successful.\n");
@@ -256,11 +337,8 @@ static void decrypt_all_passwords(PurplePluginAction *action) {
 
 static PurplePluginPrefFrame *
 get_plugin_pref_frame(PurplePlugin *plugin) {
-    PurplePluginPrefFrame *frame;
+    PurplePluginPrefFrame *frame = purple_plugin_pref_frame_new();
     PurplePluginPref *pref;
-
-    frame = purple_plugin_pref_frame_new();
-
     pref = purple_plugin_pref_new_with_label(("KeePass Preferences"));
     purple_plugin_pref_frame_add(frame, pref);
 
@@ -328,10 +406,9 @@ static gboolean plugin_load(PurplePlugin *plugin) {
 //                          PURPLE_CALLBACK(account_removed), NULL);
 //    purple_signal_connect(accounts_handle, "account-set-info", plugin,
 //                          PURPLE_CALLBACK(account_changed), NULL);
-    return TRUE;
+    return true;
 }
 
-/* For specific notes on the meanings of each of these members, consult the C Plugin Howto on the website. */
 static PurplePluginInfo info = {
         PURPLE_PLUGIN_MAGIC,
         PURPLE_MAJOR_VERSION,
@@ -339,8 +416,8 @@ static PurplePluginInfo info = {
         NULL, 0,
         NULL,
         PURPLE_PRIORITY_DEFAULT, "core-keepass", "KeePass", PLUGIN_VERSION,
-        "Use KeePass to store passwords.", /* Summary */
-        "Store passwords encrypted within a KeePass database.", /* Description */
+        "Use KeePass to store passwords.",
+        "Store passwords encrypted within a KeePass database.",
         "Adam Delman <flyn@flyn.cc>",
         NULL, plugin_load,
         NULL,
@@ -348,11 +425,23 @@ static PurplePluginInfo info = {
         NULL,
         NULL,
         NULL,
-        plugin_actions, /* this tells libpurple the address of the function to call to get the list of plugin actions. */
+        plugin_actions,
         NULL,
         NULL,
         NULL,
         NULL};
+
+void setup_aes_key() {
+    if (strcmp("", purple_prefs_get_string(PREF_KEEPASS_KEY_PATH)) == 0) {
+        aes_key = malloc(AES_KEY_SIZE);
+        RAND_bytes(aes_key, sizeof(aes_key));
+        aes_key = (unsigned char *) g_base64_encode(aes_key, AES_KEY_SIZE);
+        purple_prefs_set_string(PREF_KEEPASS_KEY_PATH, (char *) aes_key);
+    }
+    else {
+        aes_key = (unsigned char *) purple_prefs_get_string(PREF_KEEPASS_KEY_PATH);
+    }
+}
 
 static void init_plugin(PurplePlugin *plugin) {
     session = soup_session_new();
@@ -361,8 +450,6 @@ static void init_plugin(PurplePlugin *plugin) {
 #endif
     purple_debug_set_enabled(true);
     purple_debug_info(PLUGIN_ID, "Initialising KeePassHTTP Plugin.\n");
-    purple_prefs_init();
-    purple_prefs_add_none(PREF_PREFIX);
     if (!purple_prefs_exists(PREF_KEEPASS_HOST_PATH)) {
         purple_prefs_add_string(PREF_KEEPASS_HOST_PATH, "localhost");
     }
@@ -372,13 +459,22 @@ static void init_plugin(PurplePlugin *plugin) {
     if (!purple_prefs_exists(PREF_KEEPASS_KEY_PATH)) {
         purple_prefs_add_string(PREF_KEEPASS_KEY_PATH, "");
     }
-    aes_key = (unsigned char *) purple_prefs_get_string(PREF_KEEPASS_KEY_PATH);
+    setup_aes_key();
+
+    ERR_load_crypto_strings();
+    OpenSSL_add_all_algorithms();
+    OPENSSL_config(NULL);
+
+
     if (!purple_prefs_exists(PREF_KEEPASS_CLIENT_ID_PATH)) {
         purple_prefs_add_string(PREF_KEEPASS_CLIENT_ID_PATH, "");
     }
-    keepass_http_test_associate("", "", false);
-    RAND_bytes(aes_key, AES_KEY_SIZE);
+    bool associated = keepass_http_test_associate("", "", false);
+    if (!associated) {
+        keepass_http_associate();
+    }
 
 }
+
 
 PURPLE_INIT_PLUGIN(keepass_pidgin, init_plugin, info)
