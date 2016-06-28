@@ -2,5 +2,5 @@ include_directories (${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOU
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${GLIB_CFLAGS} ${PURPLE_CFLAGS} ${DBUS_CFLAGS}")
 set(keepasshttp_SRCS keepasshttp.c)
 add_library(keepasshttp MODULE ${keepasshttp_SRCS})
-target_link_libraries(keepasshttp ${GLIB_LINK_FLAGS} ${PURPLE_LINK_FLAGS} ${LIBSOUP_LIBRARIES} ${JSON-C_LIBRARIES})
+target_link_libraries(keepasshttp ${GLIB_LINK_FLAGS} ${PURPLE_LINK_FLAGS} ${LIBSOUP_LIBRARIES} ${JSON-C_LIBRARIES} ${OPENSSL_LIBRARIES})
 install(TARGETS keepasshttp LIBRARY DESTINATION /home/adam/.purple/plugins)

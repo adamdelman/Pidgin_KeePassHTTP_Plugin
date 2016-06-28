@@ -12,32 +12,59 @@
 #include <libsoup/soup.h>
 #include "json-c/json.h"
 #include <libpurple/plugin.h>
+#include <libpurple/debug.h>
 #include <libpurple/notify.h>
 #include <libpurple/version.h>
 #include "config.h"
+#include <openssl/rand.h>
+#include <openssl/conf.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
 
-PurplePlugin *keepass_plugin = NULL; //A handle to our plugin - will be initiated in plugin_load().
-SoupSession *session = NULL;
 #define PLUGIN_ID "keepasshttp"
 #define PREF_PREFIX     "/plugins/gtk/" PLUGIN_ID
 #define PREF_KEEPASS_HOST_PATH        PREF_PREFIX "/keepass_host"
 #define PREF_KEEPASS_PORT_PATH      PREF_PREFIX "/keepass_port"
+#define PREF_KEEPASS_CLIENT_ID_PATH      PREF_PREFIX "/keepass_client_id"
+#define PREF_KEEPASS_KEY_PATH      PREF_PREFIX "/keepass_key"
+
 #define PREF_KEEPASS_HOST_LABEL "KeePass Host"
 #define PREF_KEEPASS_PORT_LABEL "KeePass Port"
 
-#define MAX_URL_LENGTH 300
 
-static char *const RequestType_key = "RequestType";
-static char *const test_associate_request_type = "test-associate";
-static char *const TriggerUnlock_key = "TriggerUnlock";
+#define REQUEST_TYPE "RequestType"
+#define TEST_ASSOCIATE_REQUEST_TYPE "test-associate"
+#define ASSOCIATE_REQUEST_TYPE "associate"
+#define TRIGGER_UNLOCK "TriggerUnlock"
+#define KEY "Key"
+#define ID "ID"
+#define NONCE "Nonce"
+#define SUCCESS "Success"
+#define VERIFIER "Verifier"
+#define JSON_MIME_TYPE "application/json"
 
-//static const char *key_for_account(PurpleAccount *account) {
-//    static char key[1024];
-//
-//    sprintf(key, "%s:%s", purple_account_get_protocol_id(account),
-//            purple_account_get_username(account));
-//    return key;
-//}
+#define AES_KEY_SIZE 32
+#define POST_METHOD "POST"
+
+
+PurplePlugin *keepass_plugin = NULL;
+SoupSession *session = NULL;
+char *keepass_http_client_id = "";
+unsigned char *aes_key;
+
+struct Http_Response {
+    guint status_code;
+    struct json_object *json;
+};
+#define PIDGIN_KEY_STRING_MAX_SIZE 1024
+
+static const char *key_for_account(PurpleAccount *account) {
+    static char key[PIDGIN_KEY_STRING_MAX_SIZE];
+
+    snprintf(key, PIDGIN_KEY_STRING_MAX_SIZE, "%s:%s", purple_account_get_protocol_id(account),
+             purple_account_get_username(account));
+    return key;
+}
 
 //static void store_password(PurpleAccount *account) {
 //    int wallet = open_wallet(FALSE);
@@ -53,7 +80,26 @@ static char *const TriggerUnlock_key = "TriggerUnlock";
 //    }
 //}
 
-static char *const json_mime_type = "application/json";
+bool is_association_successful(struct Http_Response *http_response) {
+    bool test_success = false;
+    if ((*http_response).status_code == 200) {
+        struct json_object *success_json = json_object_new_object();
+        json_object_object_get_ex((*http_response).json, SUCCESS, &success_json);
+        if (json_object_get_boolean(success_json) == true) {
+            test_success = true;
+        }
+    }
+    return test_success;
+}
+
+gchar *get_nonce() {
+    unsigned char *nonce_bytes = NULL;
+    RAND_bytes(nonce_bytes, 16);
+    gchar *nonce = g_base64_encode(nonce_bytes, sizeof(nonce_bytes));
+    return nonce;
+}
+
+#define MAX_URL_LENGTH 300
 
 static char *get_keepass_url() {
     const char *keepass_host = purple_prefs_get_string(PREF_KEEPASS_HOST_PATH);
@@ -63,32 +109,78 @@ static char *get_keepass_url() {
     return url_string;
 }
 
-static void perform_http(char *method, char *body) {
+static struct Http_Response perform_keepass_http(const char *method, const char *body) {
+    SoupMessage *msg = soup_message_new(method, get_keepass_url());
+    soup_message_set_request(msg, JSON_MIME_TYPE, SOUP_MEMORY_COPY, body, strlen(body));
+    guint status_code = soup_session_send_message(session, msg);
 
+    if (status_code == 200) {
+        purple_debug_info(PLUGIN_ID, "HTTP response code: %d, \n", status_code);
+        purple_debug_info(PLUGIN_ID, "HTTP response code: %s, \n", msg->response_body->data);
+    }
+    struct Http_Response http_response;
+    http_response.status_code = status_code;
+    if (msg->response_body->data) {
+        http_response.json = json_tokener_parse(msg->response_body->data);
+    }
+    return http_response;
 }
 
-static void keepass_http_test_associate() {
+static bool keepass_http_test_associate(const char *nonce, const char *verifier, bool trigger_unlock) {
     struct json_object *test_associate_msg = json_object_new_object();
-    json_object_object_add(test_associate_msg, RequestType_key, json_object_new_string(test_associate_request_type));
-    json_object_object_add(test_associate_msg, TriggerUnlock_key, json_object_new_boolean(false));
+    json_object_object_add(test_associate_msg, REQUEST_TYPE, json_object_new_string(TEST_ASSOCIATE_REQUEST_TYPE));
+    json_object_object_add(test_associate_msg, TRIGGER_UNLOCK, json_object_new_boolean(trigger_unlock));
+    json_object_object_add(test_associate_msg, ID, json_object_new_string(keepass_http_client_id));
+    json_object_object_add(test_associate_msg, NONCE, json_object_new_string(nonce));
+    json_object_object_add(test_associate_msg, VERIFIER, json_object_new_string(verifier));
     const char *body = json_object_to_json_string(test_associate_msg);
 
-    SoupMessage *msg = soup_message_new("POST", get_keepass_url());
-
-    soup_message_set_request(msg, json_mime_type,
-                             SOUP_MEMORY_COPY, body, strlen(body));
-//    soup_message_headers_append(msg->request_headers, "Content-Type:", json_mime_type);
-    soup_session_send_message(session, msg);
+    struct Http_Response http_response = perform_keepass_http(POST_METHOD, body);
+    bool test_success = is_association_successful(&http_response);
+    if (test_success) {
+        purple_debug_info(PLUGIN_ID, "KeePass test-association successful.\n");
+    }
+    else {
+        purple_debug_info(PLUGIN_ID, "KeePass test-association failed.\n");
+    }
+    return test_success;
 
 }
-//
-//static void encrypt_password(gpointer data, gpointer user_data) {
-//    PurpleAccount *account = (PurpleAccount *) data;
-//
-//    /* Only save passwords for accounts that are remembering passwords in accounts.xml. */
-//    if (purple_account_get_remember_password(account))
+
+static void keepass_http_associate() {
+    struct json_object *associate_msg = json_object_new_object();
+    json_object_object_add(associate_msg, REQUEST_TYPE, json_object_new_string(ASSOCIATE_REQUEST_TYPE));
+
+    json_object_object_add(associate_msg, KEY, json_object_new_string(g_base64_encode(aes_key, sizeof(aes_key))));
+    gchar *nonce = get_nonce();
+    json_object_object_add(associate_msg, NONCE, json_object_new_string(nonce));
+//    json_object_object_add(associate_msg, VERIFIER, json_object_new_string(verifier));
+
+    const char *body = json_object_to_json_string(associate_msg);
+    struct Http_Response http_response = perform_keepass_http(POST_METHOD, body);
+    bool test_success = is_association_successful(&http_response);
+    if (test_success) {
+        purple_debug_info(PLUGIN_ID, "KeePass association successful.\n");
+    }
+    else {
+        purple_debug_info(PLUGIN_ID, "KeePass association failed.\n");
+    }
+}
+
+
+static void encrypt_password(gpointer data, gpointer user_data) {
+    PurpleAccount *account = (PurpleAccount *) data;
+
+    /* Only save passwords for accounts that are remembering passwords in accounts.xml. */
+    if (purple_account_get_remember_password(account)) {
 //        store_password(account);
-//}
+    }
+}
+
+static char *read_password(const char *key_for_account) {
+    return "";
+}
+
 //
 //static void fetch_password(gpointer data, gpointer user_data) {
 //    PurpleAccount *account = (PurpleAccount *) data;
@@ -106,43 +198,42 @@ static void keepass_http_test_associate() {
 //    }
 //}
 //
-//static void decrypt_password(gpointer data, gpointer user_data) {
-//    PurpleAccount *account = (PurpleAccount *) data;
-//
-//    /* Only decrypt passwords for accounts that are not remembering passwords in accounts.xml. */
-//    if (!purple_account_get_remember_password(account)) {
-//        int wallet = open_wallet(FALSE);
-//        if (wallet >= 0) {
-//            const char *key = key_for_account(account);
-//            char *password = read_password(wallet, key);
-//            if (!password)
-//                return; // Don't print an error here - it could just be that the password isn't saved.
-//            purple_account_set_password(account, password);
-//            purple_account_set_remember_password(account, true);
-//            remove_entry(wallet, key);
-//            g_free(password);
-//        }
-//    }
-//}
-//
-//static void encrypt_all_passwords(PurplePluginAction *action) {
-//    GList *accounts = purple_accounts_get_all();
-//    g_list_foreach(accounts, encrypt_password, NULL);
-//    // You cannot g_list_free(accounts) here without segfaulting Pidgin.
-//    purple_notify_message(keepass_plugin, PURPLE_NOTIFY_MSG_INFO,
-//                          "KeePass Password", "All saved passwords are now in KeePass.",
-//                          NULL, NULL, NULL);
-//}
-//
-//static void decrypt_all_passwords(PurplePluginAction *action) {
-//    GList *accounts = purple_accounts_get_all();
-//    g_list_foreach(accounts, decrypt_password, NULL);
-//    // You cannot g_list_free(accounts) here without segfaulting Pidgin.
-//    purple_notify_message(keepass_plugin, PURPLE_NOTIFY_MSG_INFO,
-//                          "KeePass Password",
-//                          "All saved passwords are now in accounts.xml as plain text.", NULL,
-//                          NULL, NULL);
-//}
+static void decrypt_password(gpointer data, gpointer user_data) {
+    PurpleAccount *account = (PurpleAccount *) data;
+
+    /* Only decrypt passwords for accounts that are not remembering passwords in accounts.xml. */
+    if (!purple_account_get_remember_password(account)) {
+        const char *key = key_for_account(account);
+        char *password = read_password(key);
+        if (!password)
+            return; // Don't print an error here - it could just be that the password isn't saved.
+        purple_account_set_password(account, password);
+        purple_account_set_remember_password(account, true);
+        g_free(password);
+    }
+}
+
+static void store_password(PurpleAccount *account) {
+
+}
+
+static void encrypt_all_passwords(PurplePluginAction *action) {
+    GList *accounts = purple_accounts_get_all();
+    g_list_foreach(accounts, encrypt_password, NULL);
+    purple_notify_message(keepass_plugin, PURPLE_NOTIFY_MSG_INFO,
+                          "KeePass Password", "All saved passwords are now in KeePass.",
+                          NULL, NULL, NULL);
+}
+
+static void decrypt_all_passwords(PurplePluginAction *action) {
+    GList *accounts = purple_accounts_get_all();
+    g_list_foreach(accounts, decrypt_password, NULL);
+    // You cannot g_list_free(accounts) here without segfaulting Pidgin.
+    purple_notify_message(keepass_plugin, PURPLE_NOTIFY_MSG_INFO,
+                          "KeePass Password",
+                          "All saved passwords are now in accounts.xml as plain text.", NULL,
+                          NULL, NULL);
+}
 //
 //static void account_added(gpointer data, gpointer user_data) {
 //    store_password((PurpleAccount *) data);
@@ -207,17 +298,17 @@ static PurplePluginUiInfo prefs_info = {
 
 /* Register plugin actions */
 static GList *plugin_actions(PurplePlugin *plugin, gpointer context) {
-    GList *list = NULL; // The action list.
-//    PurplePluginAction *action = NULL; // A action temp pointer.
-//
-//    action = purple_plugin_action_new("Encrypt Passwords",
-//                                      encrypt_all_passwords);
-//    list = g_list_append(list, action);
-//    action = purple_plugin_action_new("Decrypt Passwords",
-//                                      decrypt_all_passwords);
-//    list = g_list_append(list, action);
+    GList *action_list = NULL;
+    PurplePluginAction *action = NULL;
 
-    return list;
+    action = purple_plugin_action_new("Encrypt Passwords",
+                                      encrypt_all_passwords);
+    action_list = g_list_append(action_list, action);
+    action = purple_plugin_action_new("Decrypt Passwords",
+                                      decrypt_all_passwords);
+    action_list = g_list_append(action_list, action);
+
+    return action_list;
 }
 
 /* Called when the plugin loads(after plugin_init()) */
@@ -268,10 +359,25 @@ static void init_plugin(PurplePlugin *plugin) {
 #if !GLIB_CHECK_VERSION (2, 35, 0)
     g_type_init();
 #endif
+    purple_debug_set_enabled(true);
+    purple_debug_info(PLUGIN_ID, "Initialising KeePassHTTP Plugin.\n");
+    purple_prefs_init();
     purple_prefs_add_none(PREF_PREFIX);
-    purple_prefs_add_string(PREF_KEEPASS_HOST_PATH, "localhost");
-    purple_prefs_add_int(PREF_KEEPASS_PORT_PATH, 19455);
-    keepass_http_test_associate();
+    if (!purple_prefs_exists(PREF_KEEPASS_HOST_PATH)) {
+        purple_prefs_add_string(PREF_KEEPASS_HOST_PATH, "localhost");
+    }
+    if (!purple_prefs_exists(PREF_KEEPASS_PORT_PATH)) {
+        purple_prefs_add_int(PREF_KEEPASS_PORT_PATH, 19455);
+    }
+    if (!purple_prefs_exists(PREF_KEEPASS_KEY_PATH)) {
+        purple_prefs_add_string(PREF_KEEPASS_KEY_PATH, "");
+    }
+    aes_key = (unsigned char *) purple_prefs_get_string(PREF_KEEPASS_KEY_PATH);
+    if (!purple_prefs_exists(PREF_KEEPASS_CLIENT_ID_PATH)) {
+        purple_prefs_add_string(PREF_KEEPASS_CLIENT_ID_PATH, "");
+    }
+    keepass_http_test_associate("", "", false);
+    RAND_bytes(aes_key, AES_KEY_SIZE);
 
 }
 

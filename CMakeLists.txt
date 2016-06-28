@@ -39,6 +39,10 @@ include_directories(${GDK2_INCLUDE_DIRS})
 find_package(JSON-C REQUIRED)
 include_directories(${JSON-C_INCLUDE_DIRS})
 
+find_package(OpenSSL REQUIRED)
+include_directories(${OPENSSL_INCLUDE_DIRS})
+
+
 find_package(LibPurple REQUIRED)
 include_directories(${LIBPURPLE_INCLUDE_DIRS})
 
