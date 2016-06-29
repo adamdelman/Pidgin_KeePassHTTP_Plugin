@@ -95,16 +95,15 @@ bool is_association_successful(struct Http_Response *http_response) {
 #define NONCE_SIZE 16
 
 unsigned char *get_nonce() {
-    unsigned char *nonce_bytes = malloc(NONCE_SIZE);
-    RAND_bytes(nonce_bytes, NONCE_SIZE);
-    unsigned char *nonce = (unsigned char *) g_base64_encode(nonce_bytes, sizeof(nonce_bytes));
+    unsigned char *nonce = malloc(NONCE_SIZE);
+    RAND_bytes(nonce, NONCE_SIZE);
     return nonce;
 }
 
 #define MAX_URL_LENGTH 300
 
 static char *get_keepass_url() {
-    const char *keepass_host = purple_prefs_get_path(PREF_KEEPASS_HOST_PATH);
+    const char *keepass_host = purple_prefs_get_string(PREF_KEEPASS_HOST_PATH);
     const int keepass_port = purple_prefs_get_int(PREF_KEEPASS_PORT_PATH);
     static char url_string[MAX_URL_LENGTH];
     snprintf(url_string, MAX_URL_LENGTH, "http://%s:%d", keepass_host, keepass_port);
@@ -113,13 +112,14 @@ static char *get_keepass_url() {
 
 static void log_http_header(const char *name, const char *value, gpointer http_request_or_response) {
     purple_debug_info(PLUGIN_ID, "HTTP %s header: %s: %s \n", (char *) http_request_or_response, name, value);
-
 }
 
 static struct Http_Response perform_keepass_http(const char *method, const char *body) {
-    SoupMessage *msg = soup_message_new(method, get_keepass_url());
+    char *url = get_keepass_url();
+    SoupMessage *msg = soup_message_new(method, url);
     soup_message_set_request(msg, JSON_MIME_TYPE, SOUP_MEMORY_COPY, body, strlen(body));
     guint status_code = soup_session_send_message(session, msg);
+    purple_debug_info(PLUGIN_ID, "HTTP URL : %s, \n", url);
 
     soup_message_headers_foreach(msg->request_headers, log_http_header, "request");
     if (body != NULL) {
@@ -205,37 +205,50 @@ static int encrypt(const unsigned char *plaintext, const int plaintext_len, cons
     return ciphertext_len;
 }
 
-void pad(char *str_to_pad, int pad_count, char *pad_char) {
-    printf("|%-16s|", "Hello");
-
-//    char *p = str_to_pad + pad_count - strlen(str_to_pad);
-//    strcpy(p, str_to_pad);
-//    p--;
-//    while (p >= str_to_pad) {
-//        p[0] = (char) pad_char;
-//        p--;
-//    }
+static unsigned char *base64_encode(const unsigned char *string) {
+    return (unsigned char *) g_base64_encode(string, sizeof(string));
 }
 
 
-unsigned char* get_verifier(const unsigned char *nonce) {
-    char *nonce_copy = malloc(NONCE_SIZE);
-    nonce_copy = strcpy(nonce_copy,nonce);
-    pad(nonce_copy,NONCE_SIZE,"0");
-    unsigned char *verifier = malloc(NONCE_SIZE);
-    encrypt(nonce_copy, (int) strlen((const char *) nonce_copy), aes_key, nonce, verifier);
-    verifier = (unsigned char *) g_base64_encode(verifier, sizeof(verifier));
-    return verifier;
+void pad(char *str_to_pad, int final_length, char pad_char) {
+    purple_debug_info(PLUGIN_ID, "Before pad: '%s'\n", str_to_pad);
+
+    if (final_length > strlen(str_to_pad)) {
+        size_t pad_count = final_length - strlen(str_to_pad);
+
+        purple_debug_info(PLUGIN_ID, "Pad iterations: %d\n", (int) pad_count);
+
+        for (int i = 1; i < pad_count; i++) {
+            strcat(str_to_pad, &pad_char);
+            purple_debug_info(PLUGIN_ID, "Count: '%d', string is '%s'\n", i, str_to_pad);
+
+        }
+    }
+    purple_debug_info(PLUGIN_ID, "After pad:  '%s'\n", str_to_pad);
 }
+
+
+char *get_verifier(const unsigned char *nonce, char unsigned *verifier) {
+    char *padded_nonce = malloc(NONCE_SIZE+1);
+    memcpy(padded_nonce, nonce, (sizeof(nonce)));
+    pad(padded_nonce, NONCE_SIZE, 0xd);
+    encrypt(padded_nonce, (int) strlen((char *) padded_nonce), aes_key, nonce, verifier);
+    char *base64_verifier = base64_encode(verifier);
+    free(padded_nonce);
+    return base64_verifier;
+}
+
 
 static void keepass_http_associate() {
     struct json_object *associate_msg = json_object_new_object();
     json_object_object_add(associate_msg, REQUEST_TYPE, json_object_new_string(ASSOCIATE_REQUEST_TYPE));
     json_object_object_add(associate_msg, KEY, json_object_new_string((char *) aes_key));
     const unsigned char *nonce = get_nonce();
-    json_object_object_add(associate_msg, NONCE, json_object_new_string((const char *) nonce));
-    unsigned char *verifier = get_verifier(nonce);
-    json_object_object_add(associate_msg, VERIFIER, json_object_new_string((const char *) verifier));
+
+    json_object_object_add(associate_msg, NONCE, json_object_new_string((const char *) base64_encode(nonce)));
+    char *verifier = malloc(NONCE_SIZE+1);
+    verifier = get_verifier(nonce, verifier);
+    json_object_object_add(associate_msg, VERIFIER, json_object_new_string((const char *) base64_encode(verifier)));
     const char *body = json_object_to_json_string(associate_msg);
     struct Http_Response http_response = perform_keepass_http(POST_METHOD, body);
 //    free(verifier);
@@ -450,7 +463,7 @@ static void init_plugin(PurplePlugin *plugin) {
 #endif
     purple_debug_set_enabled(true);
     purple_debug_info(PLUGIN_ID, "Initialising KeePassHTTP Plugin.\n");
-    if (!purple_prefs_exists(PREF_KEEPASS_HOST_PATH)) {
+    if (strcmp("", purple_prefs_get_string(PREF_KEEPASS_HOST_PATH)) == 0) {
         purple_prefs_add_string(PREF_KEEPASS_HOST_PATH, "localhost");
     }
     if (!purple_prefs_exists(PREF_KEEPASS_PORT_PATH)) {
